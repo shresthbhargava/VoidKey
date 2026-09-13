@@ -11,17 +11,31 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import com.voidkey.backend.logic.LogicEvaluator;
 
 @RestController
 @RequestMapping("/api/forms/{formId}/questions")
 public class QuestionController {
 
+
     private final QuestionService questionService;
+    private final FormService formService;
 
-    public QuestionController(QuestionService questionService) {
+
+    public QuestionController(QuestionService questionService, FormService formService) {
         this.questionService = questionService;
+        this.formService = formService;
     }
+    @PutMapping("/{questionId}/logic")
+    public ResponseEntity<QuestionResponse> setQuestionLogic(
+            @PathVariable Long formId,
+            @PathVariable Long questionId,
+            @AuthenticationPrincipal User currentUser,
+            @RequestBody LogicEvaluator.LogicNode logicNode) {
 
+        Question updated = formService.setQuestionLogic(formId, questionId, currentUser, logicNode);
+        return ResponseEntity.ok(QuestionResponse.from(updated));
+    }
     public record CreateQuestionRequest(
             @NotNull(message = "Type is required") QuestionType type,
             @NotBlank(message = "Label cannot be blank") String label,

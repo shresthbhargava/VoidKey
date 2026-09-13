@@ -3,6 +3,9 @@ package com.voidkey.backend.form;
 import com.voidkey.backend.user.User;
 import org.springframework.stereotype.Service;
 
+import com.voidkey.backend.logic.LogicEvaluator;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.List;
 
 @Service
@@ -16,6 +19,10 @@ public class FormService {
         this.questionRepository = questionRepository;
     }
 
+    public Form getFormWithQuestionsPublic(Long formId) {
+        return formRepository.findByIdWithQuestions(formId)
+                .orElseThrow(() -> new FormNotFoundException(formId));
+    }
     public Form createForm(User owner, String title, String description) {
         Form form = Form.builder()
                 .owner(owner)
@@ -28,14 +35,9 @@ public class FormService {
     public Form getFormOwnedBy(Long formId, User user) {
         Form form = formRepository.findById(formId)
                 .orElseThrow(() -> new FormNotFoundException(formId));
-
-        if (!form.getOwner().getId().equals(user.getId())) {
-            throw new FormAccessDeniedException(formId);
-        }
-
+        checkOwnership(form, user);
         return form;
     }
-    
 
     public Form getFormWithQuestions(Long formId, User user) {
         Form form = formRepository.findByIdWithQuestions(formId)
@@ -66,6 +68,17 @@ public class FormService {
         question.setRequired(required);
         question.setOrderIndex(nextOrderIndex);
 
+        return questionRepository.save(question);
+    }
+
+    @Transactional
+    public Question setQuestionLogic(Long formId, Long questionId, User owner, LogicEvaluator.LogicNode logicNode) {
+        getFormOwnedBy(formId, owner);
+
+        Question question = questionRepository.findByIdAndFormId(questionId, formId)
+                .orElseThrow(() -> new QuestionNotFoundException(questionId));
+
+        question.setLogicJson(logicNode);
         return questionRepository.save(question);
     }
 }
