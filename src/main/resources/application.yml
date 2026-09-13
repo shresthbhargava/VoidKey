@@ -1,0 +1,38 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: voidkey-backend
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/voidkey}
+    username: ${DB_USER:voidkey}
+    password: ${DB_PASSWORD:voidkey}
+
+  jpa:
+    hibernate:
+      # validate, not update/create — Flyway owns the schema, Hibernate just maps to it.
+      # This is the industry-standard pairing; letting Hibernate auto-generate DDL in
+      # a real project causes silent, hard-to-diagnose schema drift.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Kolkata
+        format_sql: true
+    show-sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+voidkey:
+  jwt:
+    # Never commit a real secret. Set this via environment variable in dev/prod.
+    secret: ${JWT_SECRET:dev-only-change-me-this-must-be-at-least-32-bytes-long}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}   # 24 hours
+
+springdoc:
+  swagger-ui:
+    path: /docs

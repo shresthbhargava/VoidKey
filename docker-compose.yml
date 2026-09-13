@@ -1,0 +1,18 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16
+    container_name: voidkey-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: voidkey
+      POSTGRES_USER: voidkey
+      POSTGRES_PASSWORD: voidkey
+    ports:
+      - "5433:5432"
+    volumes:
+      - voidkey_pg_data:/var/lib/postgresql/data
+
+
+volumes:
+  voidkey_pg_data:
