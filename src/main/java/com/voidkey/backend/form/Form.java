@@ -7,6 +7,8 @@ import lombok.*;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "forms")
@@ -30,6 +32,7 @@ public class Form {
 
     private String description;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "theme_json", columnDefinition = "jsonb")
     private String themeJson;
 

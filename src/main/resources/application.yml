@@ -36,3 +36,4 @@ voidkey:
 springdoc:
   swagger-ui:
     path: /docs
+

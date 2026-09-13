@@ -3,6 +3,8 @@ package com.voidkey.backend.form;
 import com.voidkey.backend.logic.LogicEvaluator.LogicNode;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "questions")
@@ -33,9 +35,11 @@ public class Question {
     @Column(name = "order_index", nullable = false)
     private int orderIndex;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "config_json", columnDefinition = "jsonb")
     private String configJson;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Convert(converter = LogicNodeConverter.class)
     @Column(name = "logic_json", columnDefinition = "jsonb")
     private LogicNode logicJson;
