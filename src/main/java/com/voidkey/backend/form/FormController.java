@@ -20,6 +20,11 @@ public class FormController {
 
     private final FormService formService;
 
+    @PatchMapping("/{id}/publish")
+    public ResponseEntity<FormSummaryResponse> publish(@AuthenticationPrincipal User user, @PathVariable Long id) {
+        Form form = formService.publishForm(id, user);
+        return ResponseEntity.ok(FormSummaryResponse.from(form));
+    }
     @PostMapping
     public ResponseEntity<FormSummaryResponse> create(
             @AuthenticationPrincipal User user,

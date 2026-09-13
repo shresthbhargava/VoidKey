@@ -81,4 +81,10 @@ public class FormService {
         question.setLogicJson(logicNode);
         return questionRepository.save(question);
     }
+    @Transactional
+    public Form publishForm(Long formId, User owner) {
+        Form form = getFormOwnedBy(formId, owner);
+        form.setStatus(FormStatus.PUBLISHED);
+        return formRepository.save(form);
+    }
 }
