@@ -2,6 +2,7 @@ package com.voidkey.backend.form;
 
 import com.voidkey.backend.form.dto.CreateFormRequest;
 import com.voidkey.backend.form.dto.FormResponse;
+import com.voidkey.backend.form.dto.FormSummaryResponse;
 import com.voidkey.backend.user.User;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,24 +21,24 @@ public class FormController {
     private final FormService formService;
 
     @PostMapping
-    public ResponseEntity<FormResponse> create(
+    public ResponseEntity<FormSummaryResponse> create(
             @AuthenticationPrincipal User user,
             @Valid @RequestBody CreateFormRequest request
     ) {
         Form form = formService.createForm(user, request.title(), request.description());
-        return ResponseEntity.status(HttpStatus.CREATED).body(FormResponse.from(form));
+        return ResponseEntity.status(HttpStatus.CREATED).body(FormSummaryResponse.from(form));
     }
 
     @GetMapping
-    public List<FormResponse> listMine(@AuthenticationPrincipal User user) {
+    public List<FormSummaryResponse> listMine(@AuthenticationPrincipal User user) {
         return formService.getFormsForOwner(user).stream()
-                .map(FormResponse::from)
+                .map(FormSummaryResponse::from)
                 .toList();
     }
 
     @GetMapping("/{id}")
     public FormResponse getOne(@AuthenticationPrincipal User user, @PathVariable Long id) {
-        Form form = formService.getFormOwnedBy(id, user);
+        Form form = formService.getFormWithQuestions(id, user);
         return FormResponse.from(form);
     }
 }

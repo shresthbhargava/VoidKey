@@ -35,6 +35,20 @@ public class FormService {
 
         return form;
     }
+    
+
+    public Form getFormWithQuestions(Long formId, User user) {
+        Form form = formRepository.findByIdWithQuestions(formId)
+                .orElseThrow(() -> new FormNotFoundException(formId));
+        checkOwnership(form, user);
+        return form;
+    }
+
+    private void checkOwnership(Form form, User user) {
+        if (!form.getOwner().getId().equals(user.getId())) {
+            throw new FormAccessDeniedException(form.getId());
+        }
+    }
 
     public List<Form> getFormsForOwner(User owner) {
         return formRepository.findByOwnerId(owner.getId());
