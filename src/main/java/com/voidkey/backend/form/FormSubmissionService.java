@@ -1,8 +1,10 @@
 package com.voidkey.backend.form;
 
+import com.voidkey.backend.logic.LogicEvaluator;
+import com.voidkey.backend.search.AnswerDocument;
+import com.voidkey.backend.search.AnswerSearchRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.voidkey.backend.logic.LogicEvaluator;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -10,12 +12,16 @@ import java.util.Map;
 @Service
 public class FormSubmissionService {
 
-    private final SubmittedResponseRepository responseRepository;
     private final QuestionRepository questionRepository;
+    private final SubmittedResponseRepository responseRepository;
+    private final AnswerSearchRepository answerSearchRepository;
 
-    public FormSubmissionService(SubmittedResponseRepository responseRepository, QuestionRepository questionRepository) {
-        this.responseRepository = responseRepository;
+    public FormSubmissionService(QuestionRepository questionRepository,
+                                 SubmittedResponseRepository responseRepository,
+                                 AnswerSearchRepository answerSearchRepository) {
         this.questionRepository = questionRepository;
+        this.responseRepository = responseRepository;
+        this.answerSearchRepository = answerSearchRepository;
     }
 
     public Map<Long, Boolean> evaluateVisibility(Form form, Map<Long, String> submittedAnswers) {
@@ -36,10 +42,6 @@ public class FormSubmissionService {
         return visibilityMap;
     }
 
-    // Why @Transactional here specifically: we're creating one SubmittedResponse and
-    // multiple Answer rows as a single logical operation. If saving answer 3 of 5 fails
-    // partway through, we don't want a half-saved submission sitting in the database —
-    // the transaction rolls back everything in this method as one atomic unit.
     @Transactional
     public SubmittedResponse saveSubmission(Form form, Map<Long, String> effectiveAnswers) {
         SubmittedResponse response = SubmittedResponse.builder()
@@ -59,6 +61,22 @@ public class FormSubmissionService {
             response.getAnswers().add(answer);
         }
 
-        return responseRepository.save(response);
+        SubmittedResponse saved = responseRepository.save(response);
+
+        // Index into Elasticsearch AFTER the Postgres save, so each Answer has a
+        // real generated id. Indexing failure here shouldn't roll back the DB save —
+        // search is a secondary concern, not the source of truth.
+        for (Answer answer : saved.getAnswers()) {
+            AnswerDocument doc = new AnswerDocument(
+                    answer.getId().toString(),
+                    form.getId(),
+                    answer.getQuestion().getId(),
+                    answer.getQuestion().getLabel(),
+                    answer.getValue()
+            );
+            answerSearchRepository.save(doc);
+        }
+
+        return saved;
     }
 }

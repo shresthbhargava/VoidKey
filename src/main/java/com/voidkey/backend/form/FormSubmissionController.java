@@ -2,7 +2,8 @@ package com.voidkey.backend.form;
 
 import com.voidkey.backend.form.dto.FormSubmissionResponse;
 import com.voidkey.backend.form.dto.SubmitFormRequest;
-import com.voidkey.backend.form.dto.SubmittedResponseView;
+import com.voidkey.backend.search.AnswerDocument;
+import com.voidkey.backend.search.AnswerSearchRepository;
 import com.voidkey.backend.user.User;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -19,13 +20,14 @@ public class FormSubmissionController {
 
     private final FormService formService;
     private final FormSubmissionService formSubmissionService;
-    private final SubmittedResponseRepository responseRepository;
+    private final AnswerSearchRepository answerSearchRepository;
 
-    public FormSubmissionController(FormService formService, FormSubmissionService formSubmissionService,
-                                    SubmittedResponseRepository responseRepository) {
+    public FormSubmissionController(FormService formService,
+                                    FormSubmissionService formSubmissionService,
+                                    AnswerSearchRepository answerSearchRepository) {
         this.formService = formService;
         this.formSubmissionService = formSubmissionService;
-        this.responseRepository = responseRepository;
+        this.answerSearchRepository = answerSearchRepository;
     }
 
     @PostMapping("/{formId}/submit")
@@ -46,16 +48,13 @@ public class FormSubmissionController {
         return ResponseEntity.ok(response);
     }
 
-    // Owner-only: viewing responses is a different security boundary than submitting them.
-    @GetMapping("/{formId}/responses")
-    public List<SubmittedResponseView> getResponses(
+    @GetMapping("/{formId}/responses/search")
+    public List<AnswerDocument> searchResponses(
             @PathVariable Long formId,
+            @RequestParam("q") String query,
             @AuthenticationPrincipal User currentUser) {
 
-        formService.getFormOwnedBy(formId, currentUser); // enforces ownership; throws if not owner
-
-        return responseRepository.findByFormIdWithAnswers(formId).stream()
-                .map(SubmittedResponseView::from)
-                .toList();
+        formService.getFormOwnedBy(formId, currentUser);
+        return answerSearchRepository.findByFormIdAndValueContaining(formId, query);
     }
 }

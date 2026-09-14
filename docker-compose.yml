@@ -17,6 +17,24 @@ services:
       timeout: 5s
       retries: 5
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: voidkey-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - voidkey_es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   app:
     build: .
     container_name: voidkey-app
@@ -24,13 +42,17 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/voidkey
       DB_USER: voidkey
       DB_PASSWORD: voidkey
       JWT_SECRET: dev-only-change-me-this-must-be-at-least-32-bytes-long
+      ELASTICSEARCH_URL: http://elasticsearch:9200
     ports:
       - "8080:8080"
 
 volumes:
   voidkey_pg_data:
+  voidkey_es_data:
