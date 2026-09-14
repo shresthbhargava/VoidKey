@@ -99,6 +99,9 @@ public class AgentOrchestrator {
 
         confidenceWeights.put(actionType, newWeight);
     }
+    public void setConfidenceWeight(AgentActionType type, double weight) {
+        confidenceWeights.put(type, weight);
+    }
 
     public double getConfidenceWeight(AgentActionType type) {
         return confidenceWeights.get(type);
