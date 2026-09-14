@@ -1,73 +1,113 @@
-# VoidKey Backend — Phase 1: Project Setup + Auth
+# VoidKey — Form Builder Backend with a From-Scratch AI Agent
 
-This is the starting skeleton. It does exactly one thing end-to-end: **signup, login,
-and a JWT-protected endpoint** — the foundation everything else (forms, responses,
-the agent) will sit on top of.
+A Google Forms–style backend built in Java/Spring Boot, with an autonomous
+response-analysis agent built entirely from first principles — no external
+LLM, no third-party AI API, anywhere in the codebase.
 
-## Run it locally
+## What this is
+
+VoidKey lets a user create forms, add questions, attach conditional
+visibility logic ("show Q7 only if Q3 = Yes"), publish the form, and collect
+public submissions. On top of that sits an agent that reads real submitted
+responses and autonomously flags likely spam and near-duplicate answers,
+using its own confidence in each type of judgment — a confidence that
+adapts based on whether a form owner accepts or rejects its suggestions,
+and that persists across restarts.
+
+## Why build the agent from scratch instead of calling an LLM
+
+Wrapping `POST /v1/chat/completions` around a form-analysis feature is an
+API integration, not an engineering exercise. This project instead
+implements the actual mechanics an intelligent system needs:
+
+- **Perception**: turning raw text into structured signal (TF-IDF vectors)
+- **Reasoning**: two independent, classical algorithms — cosine similarity
+  for "how alike are these two answers", and Naive Bayes for
+  "how likely is this answer to be spam"
+- **Action**: combining those signals into a decision, gated by a
+  confidence threshold so low-trust action types stay quiet even when
+  the raw signal is technically present
+- **Learning**: a bounded, multiplicative weight update — when a form
+  owner accepts or rejects a suggestion, the agent's confidence in that
+  *type* of suggestion moves accordingly, and the new confidence is
+  persisted so it survives a restart
+
+This is the classical "intelligent agent" architecture (perceive → reason
+→ act → learn), predating and independent of large language models —
+implemented here in plain Java with zero ML libraries.
+
+## Architecture
+com.voidkey.backend/
+├── auth/ JWT issuing + validation, login/signup
+├── user/ User entity, Spring Security UserDetails integration
+├── form/ Forms, questions, submissions, responses (core CRUD)
+├── logic/ Recursive conditional-logic engine (sealed-interface AST,
+│ polymorphic JSON serialization via Jackson)
+├── agent/
+│ ├── nlp/ Tokenizer, TF-IDF vectorizer, cosine similarity
+│ ├── classifier/ Naive Bayes spam/quality classifier
+│ └── core/ AgentOrchestrator (the perceive-reason-act-learn loop),
+│ AgentService (integration + persistence), controller
+└── config/ Security filter chain, CORS, global exception handling
+
+## Core technical decisions worth knowing about
+
+- **JWT auth, stateless sessions.** No server-side session store; the
+  token itself carries identity, verified per-request by a custom
+  `OncePerRequestFilter`.
+- **Ownership-scoped CRUD.** Editing a form requires proving ownership at
+  the service layer (`FormService.getFormOwnedBy`), distinct from
+  submitting a response to a form, which is intentionally public — same
+  trust model as Google Forms/Typeform.
+- **N+1 prevention.** Fetching a form's questions uses an explicit
+  `LEFT JOIN FETCH` query, not the default lazy-loaded collection —
+  loading a form's detail view is one query, not one-plus-N.
+- **Polymorphic JSON for the logic engine.** `LogicNode` is a Java sealed
+  interface (`LogicRule` / `LogicGroup`), serialized with a
+  `@JsonTypeInfo` type discriminator so a form's visibility rules can
+  nest arbitrarily deep and still round-trip through Postgres `jsonb`
+  correctly.
+- **Cascading visibility.** If a question is hidden by its own logic
+  rule, its submitted answer is treated as absent — not just null — for
+  every rule evaluated after it. This prevents a "ghost answer" a user
+  never actually saw the question for from silently triggering other
+  questions' visibility.
+- **Summary vs. detail response shapes.** Listing forms returns a light
+  DTO with no nested data; fetching one form returns the full shape with
+  questions embedded — a deliberate two-tier API design, not an
+  oversight.
+
+## Known limitations (stated honestly, not hidden)
+
+- **Conditional logic cascade assumes forward dependency.** A question's
+  visibility rule is evaluated correctly against every question that
+  appears *before* it in the form. A rule referencing a *later* question
+  would not cascade correctly — the general case needs topological
+  sorting over the rule graph, which was identified but out of scope for
+  this project's size.
+- **The agent's merge/duplicate detection currently compares answers
+  across different questions**, not just answers to the *same* question.
+  This is a simplification for the current scope; a production version
+  would scope similarity comparisons per-question.
+- **The Naive Bayes classifier returns a label, not a probability** — a
+  known limitation of this minimal implementation. The agent currently
+  treats any "spam" prediction as a fixed raw confidence of 1.0 rather
+  than a graded score.
+- **No stemming/lemmatization** in the tokenizer, so morphological
+  variants ("clear" vs. "clearer") are treated as unrelated words — this
+  measurably lowers similarity scores between paraphrased duplicates.
+
+## Running it locally
 
 ```bash
-# 1. Start Postgres
-docker compose up -d
-
-# 2. Set the JWT secret (or rely on the insecure dev default in application.yml)
-export JWT_SECRET="a-long-random-string-at-least-32-characters"
-
-# 3. Run the app (requires Maven installed — `mvn -v` to check, or add the
-#    wrapper yourself with `mvn -N io.takari:maven:wrapper` if you'd rather use ./mvnw)
-mvn spring-boot:run
+docker compose up -d          # starts Postgres
+mvn spring-boot:run           # starts the app on :8080
 ```
 
-The app starts on `http://localhost:8080`. Flyway will automatically run
-`V1__init_users.sql` against your local Postgres on startup — check the logs for
-`Successfully applied 1 migration`.
+API docs at `http://localhost:8080/docs` once running.
 
-## Verify Phase 1 actually works (do this before moving on)
+## Tech stack
 
-```bash
-# Sign up
-curl -X POST http://localhost:8080/api/auth/signup \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Test User","email":"test@voidkey.dev","password":"password123"}'
-# -> 201, returns { token, name, email }
-
-# Log in
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@voidkey.dev","password":"password123"}'
-# -> 200, returns a fresh token
-
-# Call the protected endpoint WITHOUT a token
-curl http://localhost:8080/api/me
-# -> should be 401/403 (this proves SecurityConfig is actually enforcing auth)
-
-# Call it WITH the token from signup/login
-curl http://localhost:8080/api/me -H "Authorization: Bearer <paste token here>"
-# -> 200, returns your id/name/email/role (this proves the whole JWT chain works)
-```
-
-If all four of those behave as described, Phase 1 is genuinely done — not just
-"the code compiles," but "the security model actually does what it claims to do."
-
-API docs (Swagger UI) are at `http://localhost:8080/docs` once the app is running.
-
-## What's deliberately NOT here yet
-
-- `form` / `question` / `response` packages — Phase 1 of the main guide, coming next
-- `logic` (conditional branching engine) — Phase 2
-- `agent` (from-scratch TF-IDF / Naive Bayes / orchestrator) — Phases 3–4, and that's
-  where the assignments start. This phase was full working code on purpose, since
-  auth/security wiring is standard plumbing, not the part you're here to learn deeply.
-
-## File-by-file, what to actually understand (not just copy)
-
-| File | Understand this before moving on |
-|---|---|
-| `SecurityConfig` | Why CSRF is disabled here specifically (no cookies used), and the difference between "authenticated" (JwtAuthFilter) and "authorized" (authorizeHttpRequests) |
-| `JwtAuthFilter` | Why it never itself rejects a request — it only establishes identity |
-| `JwtService` | Why JWTs are stateless, and the revocation trade-off that comes with that |
-| `User.java` | The UserDetails contract — which 4 methods Spring Security actually calls, and why |
-| `V1__init_users.sql` | Why Flyway (versioned migrations) instead of `ddl-auto: update` |
-
-If any of these don't make sense after reading the inline comments, ask about that
-specific file — that's exactly the right level to dig into before writing Phase 2.
+Java 21, Spring Boot 3.2, Spring Security (JWT), Spring Data JPA,
+PostgreSQL, Flyway (versioned migrations, not Hibernate auto-DDL),
+Jackson (polymorphic deserialization), JUnit 5.
