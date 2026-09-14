@@ -12,7 +12,9 @@ public submissions. On top of that sits an agent that reads real submitted
 responses and autonomously flags likely spam and near-duplicate answers,
 using its own confidence in each type of judgment — a confidence that
 adapts based on whether a form owner accepts or rejects its suggestions,
-and that persists across restarts.
+and that persists across restarts. Submitted responses are also indexed
+into Elasticsearch, giving form owners real full-text search across every
+response ever collected.
 
 ## Why build the agent from scratch instead of calling an LLM
 
@@ -43,6 +45,8 @@ com.voidkey.backend/
 ├── form/ Forms, questions, submissions, responses (core CRUD)
 ├── logic/ Recursive conditional-logic engine (sealed-interface AST,
 │ polymorphic JSON serialization via Jackson)
+├── search/ Elasticsearch document mapping + repository for
+│ full-text search over submitted answers
 ├── agent/
 │ ├── nlp/ Tokenizer, TF-IDF vectorizer, cosine similarity
 │ ├── classifier/ Naive Bayes spam/quality classifier
@@ -76,6 +80,12 @@ com.voidkey.backend/
   DTO with no nested data; fetching one form returns the full shape with
   questions embedded — a deliberate two-tier API design, not an
   oversight.
+- **Elasticsearch as a secondary, search-only store.** Postgres remains
+  the source of truth for every submitted answer; each answer is also
+  written to Elasticsearch immediately after its Postgres save, purely
+  to power full-text search. If indexing ever failed, the submission
+  itself would still be safely persisted — search is additive, not
+  load-bearing.
 
 ## Known limitations (stated honestly, not hidden)
 
@@ -96,12 +106,25 @@ com.voidkey.backend/
 - **No stemming/lemmatization** in the tokenizer, so morphological
   variants ("clear" vs. "clearer") are treated as unrelated words — this
   measurably lowers similarity scores between paraphrased duplicates.
+- **Postgres and Elasticsearch can drift out of sync.** There's no
+  reconciliation job if the Elasticsearch write fails after the Postgres
+  write succeeds — an edge case flagged here rather than solved, since a
+  proper fix (outbox pattern, retry queue) is a bigger scope than this
+  project currently needs.
 
 ## Running it locally
 
+**Full stack (recommended) — Postgres, Elasticsearch, and the app, containerized:**
 ```bash
-docker compose up -d          # starts Postgres
-mvn spring-boot:run           # starts the app on :8080
+docker compose up --build
+```
+Runs on `http://localhost:8080`. First run takes a few minutes while Maven
+resolves dependencies and Elasticsearch initializes.
+
+**Native (for active development), Postgres and Elasticsearch still via Docker:**
+```bash
+docker compose up postgres elasticsearch -d
+mvn spring-boot:run
 ```
 
 API docs at `http://localhost:8080/docs` once running.
@@ -110,4 +133,6 @@ API docs at `http://localhost:8080/docs` once running.
 
 Java 21, Spring Boot 3.2, Spring Security (JWT), Spring Data JPA,
 PostgreSQL, Flyway (versioned migrations, not Hibernate auto-DDL),
-Jackson (polymorphic deserialization), JUnit 5.
+Elasticsearch (Spring Data Elasticsearch), Jackson (polymorphic
+deserialization), JUnit 5, Docker (multi-stage build, multi-container
+Compose).
